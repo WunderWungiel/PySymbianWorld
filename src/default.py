@@ -1,40 +1,53 @@
 # -*- coding: utf-8 -*-
-"""Copyright 2023 Wunder Wungiel
-Downloaded files by Max Bondarchenko
-Hosted by Wunder Wungiel."""
+"""Copyright 2023 Wunder Wungiel"""
 import appuifw2 as appuifw
 import e32
 import urllib
 import os
+import simplejson as json
 
-dl_path = None
-while not dl_path:
-    try:
-        if os.path.isdir("F:\\"):
-            dl_path="F:\\SymbianWorld"
-    except OSError:
-        pass
-    try:
-        if os.path.isdir("E:\\"):
-            dl_path="E:\\SymbianWorld"
-    except OSError:
-        pass
-    if os.path.isdir("C:\\"):
-        dl_path="C:\\data\\SymbianWorld"
-    else:
-        appuifw.note(u"No disk available!", "error")
-        exit_key_handler()
+# Use e32.drive_list() to retrieve drives list
+def get_drive():
+    drives = e32.drive_list()
+    # Remove Z and Y
+    for letter in [u"Z:", u"Y:"]:
+        if letter in drives:
+            drives.remove(letter)
+    return drives[-1] + "\\SymbianWorld"
+
+dl_path = get_drive()
 
 if not os.path.isdir(dl_path):
     os.mkdir(dl_path)
 
+class API:
+    def __init__(self):
+        self.api_url = "http://wunderwungiel.pl/pysymbianworld/"
+
+    def get_categories(self):
+        r = urllib.urlopen(self.api_url + "get_categories/")
+        return json.loads(r.read().decode("utf-8"))
+
+    def get_files(self, category):
+        r = urllib.urlopen(self.api_url + "get_files/?category=%s" % category)
+
+        data = u""
+
+        while True:
+            chunk = r.read(1024)
+            if not chunk:
+                break
+            data += chunk.decode("utf-8", 'ignore')
+
+        r.close()
+
+        return json.loads(data)
+
+api = API()
+
 class App1:
     def __init__(self):
-        self.entries_names = [
-            u"Applications",
-            u"Personalisation",
-            u"SW update"
-        ]
+        self.entries_names = api.get_categories()
 
     def handler(self):
         index = self.app1.current()
@@ -52,28 +65,9 @@ class App1:
             self.app1 = app1
             self.title = title
             self.exit_key_text = u"Back"
-            self.files_names = self.fetch_files(title)
+            self.files_names = api.get_files(title)
             self.menu = [(u"Search", self.search), (u"About", app2.run_body), (u"Exit", exit_key_handler)]
             self.body = self.run()
-        def fetch_files(self, title):
-            files_names = []
-
-            link = urllib.quote(title)
-            r = urllib.urlopen("http://wunderwungiel.pl/Symbian/SymbianWorldMegaRepo/%s/.list" % link)
-            data = u""
-        
-            while True:
-                chunk = r.read(1024)
-                if not chunk:
-                    break
-                data += chunk.decode("utf-8", 'ignore')
-                
-            r.close()
-            for line in data.splitlines():
-                files_names.append(line)
-            del data
-
-            return files_names
 
         def handler(self):
             index = self.folder_app.current()
@@ -115,7 +109,7 @@ class App1:
 
             results = []
             for file_name in self.files_names:
-                if query.lower() in file_name.lower():
+                if file_name.lower().find(query.lower()) != -1:
                     results.append(unicode(file_name))
             
             if not results:
@@ -139,9 +133,6 @@ class App2:
         about.add(u"Symbian World")
         about.font = (u"Nokia Sans S60", 15)
         about.add(u"\n\nBrowse Symbian World Mega Repo easier.")
-        about.add(u"\nDownloaded files provided by Max Bondarchenko.")
-        about.add(u"\nApp created, files hosted:")
-        about.add(u"\n\nBy Wunder Wungiel")
         about.add(u"\n\n----------------------------\n\n")
         about.add(u"Join our Telegram group:")
         about.style = appuifw.STYLE_UNDERLINE
@@ -180,6 +171,7 @@ class ReturnKeyHandler:
 
 def exit_key_handler():
     app_lock.signal()
+    appuifw.app.set_exit()
 
 app_lock = e32.Ao_lock()
 file_opener = appuifw.Content_handler()
